@@ -7,6 +7,7 @@ import { store } from '../store';
 import type { PulseEvent } from '../adapters/types';
 import { flyTo } from '../map';
 import { findNeighbourhood } from '../adapters/neighbourhoods';
+import { fetchShelterHistory } from '../adapters/shelter';
 
 const SEVERITY_LABELS: Record<string, string> = {
   low: 'Low',
@@ -50,6 +51,71 @@ export function buildEventPanel(): HTMLElement {
   return panel;
 }
 
+const SECTOR_COLORS: Record<string, string> = {
+  'Women':       '#f472b6',
+  'Youth':       '#facc15',
+  'Families':    '#34d399',
+  'Men':         '#60a5fa',
+  'Mixed Adult': '#94a3b8',
+  'Co-ed':       '#94a3b8',
+};
+
+function buildShelterSection(event: PulseEvent): string {
+  const m = event.metadata ?? {};
+  const sector      = String(m.sector      || '').trim();
+  const serviceType = String(m.serviceType || '').trim();
+  const programModel = String(m.programModel || '').trim();
+  const available   = Number(m.available)     || 0;
+  const capacity    = Number(m.capacity)      || 0;
+  const rate        = Number(m.occupancyRate) || 0;
+  const unit        = String(m.unit           || 'beds');
+  const address     = String(m.address        || '');
+  const dataDate    = String(m.dataDate       || '');
+
+  const sectorColor = SECTOR_COLORS[sector] ?? '#94a3b8';
+  const availColor  = available === 0 ? '#f87171' : available <= 5 ? '#fb923c' : '#4ade80';
+  const rateColor   = rate >= 98 ? '#f87171' : rate >= 90 ? '#fb923c' : rate >= 75 ? '#facc15' : '#4ade80';
+
+  const reportedLabel = dataDate
+    ? `Reported ${new Date(dataDate).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })}`
+    : 'Updated nightly';
+
+  // Service type and program model are often verbose — trim and de-duplicate if they're the same
+  const typeLabel = serviceType && programModel && serviceType !== programModel
+    ? `${serviceType} · ${programModel}`
+    : serviceType || programModel;
+
+  return `
+    <div class="shelter-panel">
+      <div class="shelter-badges">
+        ${sector      ? `<div class="shelter-sector-badge" style="color:${sectorColor};background:${sectorColor}18;border-color:${sectorColor}40">${sector}</div>` : ''}
+        ${typeLabel   ? `<div class="shelter-type-badge">${typeLabel}</div>` : ''}
+      </div>
+      ${address ? `<div class="shelter-address">${address}</div>` : ''}
+      <div class="shelter-stats-row">
+        <div class="shelter-stat-block">
+          <div class="shelter-stat-num" style="color:${availColor}">
+            ${available === 0 ? 'Full' : available}
+          </div>
+          <div class="shelter-stat-lbl">${unit} available</div>
+        </div>
+        <div class="shelter-stat-block">
+          <div class="shelter-stat-num">${capacity}</div>
+          <div class="shelter-stat-lbl">total ${unit}</div>
+        </div>
+        <div class="shelter-stat-block">
+          <div class="shelter-stat-num" style="color:${rateColor}">${rate}%</div>
+          <div class="shelter-stat-lbl">occupancy</div>
+        </div>
+      </div>
+      <div class="shelter-note">${reportedLabel} · City of Toronto data</div>
+      <div class="shelter-history" id="shelter-history" data-location="${String(m.location || '').replace(/"/g, '&quot;')}">
+        <div class="shelter-history-loading">Loading recent history...</div>
+      </div>
+    </div>
+  `;
+}
+
 export function renderEventPanel(event: PulseEvent | null) {
   const panel = document.getElementById('event-panel');
   if (!panel) return;
@@ -64,16 +130,25 @@ export function renderEventPanel(event: PulseEvent | null) {
   const color = SEVERITY_COLORS[event.severity] ?? '#888';
   const label = CATEGORY_LABELS[event.category] ?? event.category;
 
-  const metaRows = event.metadata
-    ? Object.entries(event.metadata)
-        .filter(([, v]) => v !== '' && v !== undefined && v !== null)
-        .slice(0, 5)
-        .map(([k, v]) => {
-          const key = k.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').toLowerCase();
-          return `<div class="meta-row"><span class="meta-key">${key}</span><span class="meta-val">${v}</span></div>`;
-        })
-        .join('')
-    : '';
+  // For shelter events use the dedicated section; otherwise show generic metadata
+  const bodyContent = event.category === 'shelter'
+    ? buildShelterSection(event)
+    : (() => {
+        const metaRows = event.metadata
+          ? Object.entries(event.metadata)
+              .filter(([, v]) => v !== '' && v !== undefined && v !== null)
+              .slice(0, 5)
+              .map(([k, v]) => {
+                const key = k.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').toLowerCase();
+                return `<div class="meta-row"><span class="meta-key">${key}</span><span class="meta-val">${v}</span></div>`;
+              })
+              .join('')
+          : '';
+        return [
+          event.description ? `<div class="ep-desc">${event.description}</div>` : '',
+          metaRows ? `<div class="ep-meta">${metaRows}</div>` : '',
+        ].join('');
+      })();
 
   panel.innerHTML = `
     <div class="ep-header">
@@ -87,8 +162,8 @@ export function renderEventPanel(event: PulseEvent | null) {
       </span>
       <span class="ep-time">${formatTime(event.timestamp)}</span>
     </div>
-    ${event.description ? `<div class="ep-desc">${event.description}</div>` : ''}
-    ${metaRows ? `<div class="ep-meta">${metaRows}</div>` : ''}
+    ${event.category !== 'shelter' && event.description ? '' : ''}
+    ${bodyContent}
     <div class="ep-coords">${event.lat.toFixed(4)}°N, ${Math.abs(event.lng).toFixed(4)}°W</div>
     <button class="ep-zoom-btn" id="ep-zoom">Zoom to location</button>
   `;
@@ -100,6 +175,49 @@ export function renderEventPanel(event: PulseEvent | null) {
   document.getElementById('ep-zoom')?.addEventListener('click', () => {
     flyTo(event.lng, event.lat, 16);
   });
+
+  // Async history fetch for shelter events — updates the placeholder once resolved
+  if (event.category === 'shelter') {
+    const locationName = String(event.metadata?.location || '');
+    if (locationName) {
+      fetchShelterHistory(locationName).then(history => {
+        // Guard: make sure the same shelter is still open (user may have clicked away)
+        const histEl = document.getElementById('shelter-history');
+        if (!histEl || histEl.dataset.location !== locationName) return;
+
+        if (!history) {
+          histEl.style.display = 'none';
+          return;
+        }
+
+        const TREND_LABEL  = { improving: 'Improving', stable: 'Stable', worsening: 'Worsening' };
+        const TREND_COLOR  = { improving: '#4ade80',   stable: '#94a3b8', worsening: '#f87171'   };
+        const TREND_ARROW  = { improving: '↓',         stable: '→',       worsening: '↑'         };
+        const tColor = TREND_COLOR[history.trend];
+        const avgColor = history.avg >= 98 ? '#f87171' : history.avg >= 90 ? '#fb923c' : history.avg >= 75 ? '#facc15' : '#4ade80';
+        const deltaStr = history.delta === 0 ? '' : `${history.delta > 0 ? '+' : ''}${history.delta}%`;
+
+        histEl.innerHTML = `
+          <div class="shelter-history-row">
+            <div class="sh-block">
+              <div class="sh-num" style="color:${avgColor}">${history.avg}%</div>
+              <div class="sh-lbl">${history.nights}-night avg</div>
+            </div>
+            <div class="sh-block">
+              <div class="sh-num">${history.min}–${history.max}%</div>
+              <div class="sh-lbl">range</div>
+            </div>
+            <div class="sh-block">
+              <div class="sh-num" style="color:${tColor}">
+                ${TREND_ARROW[history.trend]} ${TREND_LABEL[history.trend]}
+              </div>
+              <div class="sh-lbl">${deltaStr ? `${deltaStr} vs older` : 'no change'}</div>
+            </div>
+          </div>
+        `;
+      });
+    }
+  }
 }
 
 // Neighbourhood Pulse Card — synthesises all layers for a clicked location

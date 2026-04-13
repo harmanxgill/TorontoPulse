@@ -6,14 +6,16 @@
 import './style.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-import { initMap } from './map';
+import { initMap, refreshLayers } from './map';
 import { store } from './store';
+import { refreshVehiclePositions } from './adapters/ttcVehicles';
 import {
   buildSidebar,
   renderLayerToggles,
   renderDataSources,
   updateStats,
   updateRefreshTime,
+  renderShelterBreakdown,
 } from './ui/sidebar';
 import {
   buildEventPanel,
@@ -130,6 +132,7 @@ map.on('load', async () => {
     renderEventPanel(state.selectedEvent);
     renderDataSources();
     updateStats();
+    renderShelterBreakdown();
   });
 
   // Wire up empty-map click (obj === null from handleEventClick) to neighbourhood pulse
@@ -160,6 +163,14 @@ map.on('load', async () => {
 
   // Refresh timestamp ticker
   setInterval(updateRefreshTime, 30_000);
+
+  // Vehicle positions — initial fetch + 15 s poll
+  // refreshLayers() re-runs buildLayers() which reads the module-level cache
+  // in ttcVehicles.ts, so no store involvement is needed for transient positions.
+  refreshVehiclePositions().then(() => refreshLayers());
+  setInterval(() => {
+    refreshVehiclePositions().then(() => refreshLayers());
+  }, 15_000);
 
   // Refresh button
   document.getElementById('refresh-btn')?.addEventListener('click', async () => {

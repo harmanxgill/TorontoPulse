@@ -3,7 +3,7 @@
  */
 
 import { store } from '../store';
-import type { EventCategory } from '../adapters/types';
+import type { EventCategory, PulseEvent } from '../adapters/types';
 
 export function buildSidebar(): HTMLElement {
   const sidebar = document.createElement('aside');
@@ -40,11 +40,17 @@ export function buildSidebar(): HTMLElement {
             <div class="stat-value" id="stat-aqhi">—</div>
             <div class="stat-label">Avg AQHI</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card" id="shelter-stat-card" style="display:none">
             <div class="stat-value" id="stat-shelter">—</div>
-            <div class="stat-label">Shelters full</div>
+            <div class="stat-sub" id="stat-shelter-rate"></div>
+            <div class="stat-label">Beds available tonight</div>
           </div>
         </div>
+      </div>
+
+      <div class="sidebar-section" id="shelter-sectors-section" style="display:none">
+        <div class="section-label">SHELTER SECTORS</div>
+        <div id="shelter-sectors"></div>
       </div>
 
       <div class="sidebar-section">
@@ -147,17 +153,97 @@ export function updateStats() {
     }
   }
 
-  const shelterEl = document.getElementById('stat-shelter');
+  const shelterEl    = document.getElementById('stat-shelter');
+  const shelterRateEl = document.getElementById('stat-shelter-rate');
   if (shelterEl) {
-    const shelterEvents = allEvents.filter(e => e.category === 'shelter');
+    const shelterEvents  = allEvents.filter(e => e.category === 'shelter');
     if (shelterEvents.length > 0) {
-      const full = shelterEvents.filter(e => e.severity === 'critical').length;
-      shelterEl.textContent = `${full}/${shelterEvents.length}`;
-      shelterEl.className = `stat-value ${full / shelterEvents.length > 0.5 ? 'stat-critical' : 'stat-warn'}`;
+      const totalAvailable = shelterEvents.reduce((sum, e) => sum + (Number(e.metadata?.available) || 0), 0);
+      const totalCapacity  = shelterEvents.reduce((sum, e) => sum + (Number(e.metadata?.capacity) || 0), 0);
+      const systemRate     = totalCapacity > 0 ? (totalCapacity - totalAvailable) / totalCapacity : 0;
+      const systemPct      = Math.round(systemRate * 100);
+      shelterEl.textContent    = String(totalAvailable);
+      shelterEl.className      = `stat-value ${systemRate >= 0.98 ? 'stat-critical' : systemRate >= 0.90 ? 'stat-warn' : 'stat-ok'}`;
+      if (shelterRateEl) shelterRateEl.textContent = `System ${systemPct}%`;
     } else {
-      shelterEl.textContent = '—';
+      shelterEl.textContent    = '—';
+      shelterEl.className      = 'stat-value';
+      if (shelterRateEl) shelterRateEl.textContent = '';
     }
   }
+}
+
+// Sector display labels and ring colors (mirrors layers/index.ts SECTOR_RING_COLOR)
+const SECTOR_META: Record<string, { label: string; color: string }> = {
+  'Women':       { label: 'Women',    color: '#f472b6' },
+  'Youth':       { label: 'Youth',    color: '#facc15' },
+  'Families':    { label: 'Families', color: '#34d399' },
+  'Men':         { label: 'Men',      color: '#60a5fa' },
+  'Mixed Adult': { label: 'Mixed',    color: '#94a3b8' },
+  'Co-ed':       { label: 'Co-ed',    color: '#94a3b8' },
+};
+
+export function renderShelterBreakdown() {
+  const section   = document.getElementById('shelter-sectors-section');
+  const container = document.getElementById('shelter-sectors');
+  const statCard  = document.getElementById('shelter-stat-card');
+  if (!section || !container) return;
+
+  const state        = store.getState();
+  const layerEnabled = state.layers.find(l => l.id === 'shelter')?.enabled ?? false;
+  const events       = state.events.filter((e: PulseEvent) => e.category === 'shelter');
+
+  if (!layerEnabled || events.length === 0) {
+    section.style.display = 'none';
+    if (statCard) statCard.style.display = 'none';
+    return;
+  }
+
+  if (statCard) statCard.style.display = '';
+
+  // Aggregate by sector
+  const bySecctor = new Map<string, { available: number; capacity: number }>();
+  for (const e of events) {
+    const sector = String(e.metadata?.sector || 'Other').trim() || 'Other';
+    const cur    = bySecctor.get(sector) ?? { available: 0, capacity: 0 };
+    bySecctor.set(sector, {
+      available: cur.available + (Number(e.metadata?.available) || 0),
+      capacity:  cur.capacity  + (Number(e.metadata?.capacity)  || 0),
+    });
+  }
+
+  // Sort: known sectors first, alphabetical otherwise
+  const ORDER = ['Women', 'Men', 'Youth', 'Families', 'Mixed Adult', 'Co-ed'];
+  const sorted = [...bySecctor.entries()].sort(([a], [b]) => {
+    const ai = ORDER.indexOf(a), bi = ORDER.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
+
+  container.innerHTML = sorted.map(([sector, { available, capacity }]) => {
+    const pct   = capacity > 0 ? Math.round((capacity - available) / capacity * 100) : 0;
+    const meta  = SECTOR_META[sector];
+    const color = meta?.color ?? '#94a3b8';
+    const label = meta?.label ?? sector;
+    const avColor = available === 0 ? '#f87171' : available <= 5 ? '#fb923c' : '#e2e8f0';
+    const barW  = Math.min(100, pct);
+    const barColor = pct >= 98 ? '#f87171' : pct >= 90 ? '#fb923c' : pct >= 75 ? '#facc15' : '#4ade80';
+    return `
+      <div class="sector-row">
+        <div class="sector-dot" style="background:${color}"></div>
+        <div class="sector-label">${label}</div>
+        <div class="sector-avail" style="color:${avColor}">${available === 0 ? 'Full' : available}</div>
+        <div class="sector-bar-wrap">
+          <div class="sector-bar" style="width:${barW}%;background:${barColor}"></div>
+        </div>
+        <div class="sector-pct">${pct}%</div>
+      </div>
+    `;
+  }).join('');
+
+  section.style.display = '';
 }
 
 export function updateRefreshTime() {

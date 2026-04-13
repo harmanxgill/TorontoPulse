@@ -42,7 +42,7 @@ export const LAYER_CONFIGS: LayerConfig[] = [
     id: 'shelter',
     label: 'Shelter Capacity',
     icon: '',
-    color: [180, 120, 255],
+    color: [74, 222, 128],
     enabled: false,
     description: 'Overnight shelter bed and room availability as of last night',
   },

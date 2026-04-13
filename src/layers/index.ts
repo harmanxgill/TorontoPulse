@@ -9,6 +9,7 @@ import type { Layer } from '@deck.gl/core';
 import { store } from '../store';
 import type { PulseEvent } from '../adapters/types';
 import { SUBWAY_LINES, lineStatusColor } from '../adapters/ttcShapes';
+import { getVehiclePositions } from '../adapters/ttcVehicles';
 
 const SEVERITY_ALPHA: Record<string, number> = {
   low: 160,
@@ -63,10 +64,10 @@ const CATEGORY_COLORS: Record<string, Record<string, [number, number, number]>> 
     critical: [255, 30, 0],
   },
   shelter: {
-    low: [180, 130, 255],
-    medium: [200, 100, 255],
-    high: [220, 70, 255],
-    critical: [255, 50, 200],
+    low:      [74,  222, 128],  // green  — beds available
+    medium:   [250, 204,  21],  // amber  — filling up (75%+)
+    high:     [251, 146,  60],  // orange — near capacity (90%+)
+    critical: [248,  113, 113], // red    — at/over capacity (98%+)
   },
   crime: {
     low: [180, 80, 80],
@@ -74,6 +75,23 @@ const CATEGORY_COLORS: Record<string, Record<string, [number, number, number]>> 
     high: [240, 40, 40],
     critical: [255, 20, 20],
   },
+};
+
+// Sector ring colors — outer stroke that identifies who the shelter serves
+const SECTOR_RING_COLOR: Record<string, [number, number, number, number]> = {
+  'Women':        [244, 114, 182, 220],  // rose
+  'Youth':        [250, 204,  21, 200],  // yellow
+  'Families':     [ 52, 211, 153, 200],  // teal
+  'Men':          [ 96, 165, 250, 180],  // blue
+  'Mixed Adult':  [148, 163, 184, 160],  // slate
+  'Co-ed':        [148, 163, 184, 160],  // slate
+};
+
+// Vehicle dot colours per subway route — matches TTC official line colours
+const VEHICLE_COLORS: Record<string, [number, number, number, number]> = {
+  '1': [255, 215, 0,   255], // Line 1 — yellow/gold
+  '2': [0,   180, 90,  255], // Line 2 — green
+  '4': [180, 60,  200, 255], // Line 4 — purple
 };
 
 function getColor(event: PulseEvent): [number, number, number, number] {
@@ -109,6 +127,8 @@ export function buildLayers(): Layer[] {
   const ttcLayerEnabled = state.layers.find(l => l.id === 'ttc')?.enabled ?? true;
   if (ttcLayerEnabled) {
     const ttcEvents = state.events.filter(e => e.category === 'ttc');
+
+    // Subway line status paths — bottom-most so vehicles + alerts sit on top
     const subwayLineData = SUBWAY_LINES.map(line => ({
       ...line,
       color: lineStatusColor(line.routeId, ttcEvents),
@@ -128,6 +148,27 @@ export function buildLayers(): Layer[] {
         opacity: 0.85,
       })
     );
+
+    // Live vehicle positions — small dots riding on the route lines
+    const vehicles = getVehiclePositions();
+    if (vehicles.length > 0) {
+      layers.push(
+        new ScatterplotLayer({
+          id: 'subway-vehicles',
+          data: vehicles,
+          getPosition: d => [d.lng, d.lat],
+          getFillColor: d => VEHICLE_COLORS[d.routeId] ?? [255, 255, 255, 220],
+          getLineColor: [20, 20, 20, 200],
+          getRadius: 20,
+          radiusMinPixels: 3,
+          radiusMaxPixels: 8,
+          stroked: true,
+          lineWidthMinPixels: 1,
+          pickable: false,
+          opacity: 1,
+        })
+      );
+    }
   }
 
   // --- 311 Complaints: Heatmap + scatter ---
@@ -284,20 +325,56 @@ export function buildLayers(): Layer[] {
     })
   );
 
-  // --- Shelter capacity ---
+  // --- Shelter capacity: radius scales with total bed/room capacity ---
   const shelterEvents = byCategory.get('shelter') ?? [];
+
+  // Sector ring layer — rendered first so it sits under the fill dots.
+  // Each shelter gets an outer ring in a sector-specific color so the user can
+  // tell at a glance whether nearby capacity serves Women, Men, Youth, or Families.
+  if (shelterEvents.length > 0) {
+    layers.push(
+      new ScatterplotLayer({
+        id: 'shelter-sector-rings',
+        data: shelterEvents,
+        getPosition: (d: PulseEvent) => [d.lng, d.lat],
+        getRadius: (d: PulseEvent) => {
+          const cap = Number(d.metadata?.capacity) || 50;
+          return Math.max(70, Math.min(350, Math.sqrt(cap) * 12)) + 30;
+        },
+        getFillColor: [0, 0, 0, 0],
+        getLineColor: (d: PulseEvent) => {
+          const sector = String(d.metadata?.sector || '').trim();
+          return SECTOR_RING_COLOR[sector] ?? [148, 163, 184, 120];
+        },
+        stroked: true,
+        filled: false,
+        lineWidthMinPixels: 2,
+        radiusMinPixels: 9,
+        radiusMaxPixels: 34,
+        pickable: false,
+        opacity: 1,
+      })
+    );
+  }
+
   layers.push(
     new ScatterplotLayer({
       id: 'shelter',
       data: shelterEvents,
       getPosition: (d: PulseEvent) => [d.lng, d.lat],
-      getRadius: 120,
+      // sqrt scale so larger shelters are visually prominent without drowning small ones
+      // e.g. 50 cap → ~85m radius, 150 cap → ~147m, 300 cap → ~208m
+      getRadius: (d: PulseEvent) => {
+        const cap = Number(d.metadata?.capacity) || 50;
+        return Math.max(70, Math.min(350, Math.sqrt(cap) * 12));
+      },
       getFillColor: (d: PulseEvent) => getColor(d),
-      getLineColor: [200, 150, 255, 200],
+      // stroke inherits fill color at reduced opacity so it reads as a halo, not a separate color
+      getLineColor: (d: PulseEvent) => { const c = getColor(d); return [c[0], c[1], c[2], 160]; },
       stroked: true,
-      lineWidthMinPixels: 2,
-      radiusMinPixels: 8,
-      radiusMaxPixels: 22,
+      lineWidthMinPixels: 1.5,
+      radiusMinPixels: 7,
+      radiusMaxPixels: 28,
       pickable: true,
       autoHighlight: true,
       highlightColor: [255, 255, 255, 60],
