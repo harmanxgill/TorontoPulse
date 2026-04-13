@@ -23,14 +23,13 @@ import {
 } from './ui/eventPanel';
 import {
   fetchTTCDelays,
-  fetch311Complaints,
   fetchRestaurantInspections,
-  fetchConstruction,
   fetchAirQuality,
   fetchTrafficIncidents,
   fetchShelterCapacity,
   fetchCrimeIncidents,
 } from './adapters';
+import { loadNeighbourhoods } from './adapters/neighbourhoods';
 import type { PulseEvent, EventCategory } from './adapters/types';
 
 // ─── Build DOM ───────────────────────────────────────────────────────────────
@@ -81,7 +80,7 @@ app.appendChild(tooltip);
 // Click hint
 const clickHint = document.createElement('div');
 clickHint.className = 'click-hint';
-clickHint.innerHTML = '<span>🖱</span> Click map for Neighbourhood Pulse';
+clickHint.textContent = 'Click map for Neighbourhood Pulse';
 app.appendChild(clickHint);
 
 // ─── Init map ────────────────────────────────────────────────────────────────
@@ -97,6 +96,10 @@ setLoading('Initialising map...', 10);
 const { map } = initMap(mapCanvas);
 
 map.on('load', async () => {
+  setLoading('Loading neighbourhood boundaries...', 20);
+  // Load boundaries in parallel with data — needed for Pulse Card name lookup
+  loadNeighbourhoods().catch(() => {});
+
   setLoading('Map ready — loading data sources...', 30);
 
   // Subscribe to store changes to update UI
@@ -173,14 +176,12 @@ type Loader = {
 };
 
 const LOADERS: Loader[] = [
-  { id: 'ttc', label: 'TTC Delays', fetch: fetchTTCDelays, category: 'ttc', refreshInterval: 2 },
-  { id: '311', label: '311 Complaints', fetch: fetch311Complaints, category: '311', refreshInterval: 5 },
-  { id: 'traffic', label: 'Road Closures', fetch: fetchTrafficIncidents, category: 'traffic', refreshInterval: 5 },
-  { id: 'airquality', label: 'Air Quality (ECCC)', fetch: fetchAirQuality, category: 'airquality', refreshInterval: 60 },
-  { id: 'restaurant', label: 'DineSafe', fetch: fetchRestaurantInspections, category: 'restaurant' },
-  { id: 'shelter', label: 'Shelter Capacity', fetch: fetchShelterCapacity, category: 'shelter', refreshInterval: 60 },
-  { id: 'construction', label: 'Construction', fetch: fetchConstruction, category: 'construction' },
-  { id: 'crime', label: 'Crime Incidents (TPS)', fetch: fetchCrimeIncidents, category: 'crime' },
+  { id: 'ttc',        label: 'TTC Delays',           fetch: fetchTTCDelays,              category: 'ttc',        refreshInterval: 5  },
+  { id: 'traffic',    label: 'Road Closures',         fetch: fetchTrafficIncidents,       category: 'traffic',    refreshInterval: 5  },
+  { id: 'airquality', label: 'Air Quality (ECCC)',    fetch: fetchAirQuality,             category: 'airquality', refreshInterval: 60 },
+  { id: 'restaurant', label: 'DineSafe',              fetch: fetchRestaurantInspections,  category: 'restaurant'                      },
+  { id: 'shelter',    label: 'Shelter Capacity',      fetch: fetchShelterCapacity,        category: 'shelter',    refreshInterval: 60 },
+  { id: 'crime',      label: 'Crime Rates (TPS)',     fetch: fetchCrimeIncidents,         category: 'crime'                           },
 ];
 
 async function loadLoader(loader: Loader): Promise<void> {

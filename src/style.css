@@ -185,39 +185,6 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .stat-warn { color: #facc15; }
 .stat-critical { color: #f87171; }
 
-/* Patio Index */
-.patio-index {
-  background: linear-gradient(135deg, rgba(234,179,8,0.08), rgba(239,68,68,0.08));
-  border: 1px solid rgba(234,179,8,0.2);
-  border-radius: var(--radius);
-  padding: 12px;
-}
-.patio-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 6px;
-}
-.patio-badge {
-  margin-left: auto;
-  font-size: 10px;
-  font-weight: 700;
-  font-family: var(--mono);
-  letter-spacing: 1px;
-  padding: 2px 8px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-}
-.patio-badge.patio-quiet { color: #4ade80; border-color: rgba(74,222,128,0.3); background: rgba(74,222,128,0.08); }
-.patio-badge.patio-warm { color: #facc15; border-color: rgba(250,204,21,0.3); background: rgba(250,204,21,0.08); }
-.patio-badge.patio-peak { color: #fb923c; border-color: rgba(251,146,60,0.3); background: rgba(251,146,60,0.08); }
-.patio-badge.patio-hot { color: #f87171; border-color: rgba(248,113,113,0.3); background: rgba(248,113,113,0.1); animation: patio-blink 1s ease infinite; }
-@keyframes patio-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
-.patio-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
 
 /* Data Sources */
 #data-sources { display: flex; flex-direction: column; gap: 5px; }
@@ -320,10 +287,12 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .neighbourhood-card.hidden { opacity: 0; pointer-events: none; transform: translateY(-8px); }
 
 .nc-header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 4px; }
-.nc-title { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--text-muted); font-family: var(--mono); text-transform: uppercase; }
-.nc-coords { font-size: 10px; color: var(--text-muted); font-family: var(--mono); margin-top: 2px; }
-.nc-overall { font-size: 36px; font-weight: 800; font-family: var(--mono); margin-left: auto; line-height: 1; }
-.nc-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 0; margin-left: 8px; }
+.nc-title-block { flex: 1; min-width: 0; }
+.nc-title { font-size: 15px; font-weight: 700; color: var(--text); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nc-subtitle { font-size: 10px; font-weight: 600; letter-spacing: 1.2px; color: var(--text-muted); font-family: var(--mono); text-transform: uppercase; margin-top: 2px; }
+.nc-coords { font-size: 10px; color: var(--text-muted); font-family: var(--mono); margin-top: 3px; }
+.nc-overall { font-size: 36px; font-weight: 800; font-family: var(--mono); flex-shrink: 0; line-height: 1; }
+.nc-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 0; flex-shrink: 0; }
 .nc-overall-label { font-size: 12px; font-weight: 600; margin-bottom: 14px; }
 
 .nc-scores { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
@@ -414,8 +383,11 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-/* Make sidebar scrollable on small screens */
-.sidebar-scroll { overflow-y: auto; flex: 1; }
+.sidebar-scroll {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0; /* critical — without this flex children won't shrink below content height */
+}
 
 /* ─── RESPONSIVE ─── */
 @media (max-width: 640px) {

@@ -19,64 +19,43 @@ export function buildSidebar(): HTMLElement {
       </div>
     </div>
 
-    <div class="sidebar-section">
-      <div class="section-label">LIVE LAYERS</div>
-      <div id="layer-toggles"></div>
-    </div>
+    <div class="sidebar-scroll">
+      <div class="sidebar-section">
+        <div class="section-label">LAYERS</div>
+        <div id="layer-toggles"></div>
+      </div>
 
-    <div class="sidebar-section">
-      <div class="section-label">LIVE STATS</div>
-      <div id="live-stats" class="stats-grid">
-        <div class="stat-card" data-stat="ttc">
-          <span class="stat-icon">🚇</span>
-          <div>
+      <div class="sidebar-section">
+        <div class="section-label">LIVE STATS</div>
+        <div id="live-stats" class="stats-grid">
+          <div class="stat-card">
             <div class="stat-value" id="stat-ttc">—</div>
             <div class="stat-label">TTC delays</div>
           </div>
-        </div>
-        <div class="stat-card" data-stat="311">
-          <span class="stat-icon">📞</span>
-          <div>
+          <div class="stat-card">
             <div class="stat-value" id="stat-311">—</div>
             <div class="stat-label">311 calls today</div>
           </div>
-        </div>
-        <div class="stat-card" data-stat="airquality">
-          <span class="stat-icon">💨</span>
-          <div>
+          <div class="stat-card">
             <div class="stat-value" id="stat-aqhi">—</div>
             <div class="stat-label">Avg AQHI</div>
           </div>
-        </div>
-        <div class="stat-card" data-stat="shelter">
-          <span class="stat-icon">🏠</span>
-          <div>
+          <div class="stat-card">
             <div class="stat-value" id="stat-shelter">—</div>
             <div class="stat-label">Shelters full</div>
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="sidebar-section" id="patio-section" style="display:none">
-      <div class="patio-index">
-        <div class="patio-header">
-          <span>🍻</span>
-          <span>Patio Index</span>
-          <span class="patio-badge" id="patio-badge">–</span>
-        </div>
-        <p class="patio-desc" id="patio-desc">Calculating noise patterns...</p>
+      <div class="sidebar-section">
+        <div class="section-label">DATA SOURCES</div>
+        <div id="data-sources"></div>
       </div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="section-label">DATA SOURCES</div>
-      <div id="data-sources"></div>
     </div>
 
     <div class="sidebar-footer">
       <span id="last-refresh">Connecting...</span>
-      <button id="refresh-btn" class="refresh-btn" title="Refresh all data">↻</button>
+      <button id="refresh-btn" class="refresh-btn" title="Refresh all data">&#8635;</button>
     </div>
   `;
 
@@ -99,9 +78,9 @@ export function renderLayerToggles() {
 
     toggle.innerHTML = `
       <div class="toggle-left">
-        <div class="toggle-dot" style="background:${colorHex};box-shadow:0 0 6px ${colorHex}80"></div>
+        <div class="toggle-dot" style="background:${colorHex};box-shadow:0 0 6px ${colorHex}60"></div>
         <div>
-          <div class="toggle-label">${layer.icon} ${layer.label}</div>
+          <div class="toggle-label">${layer.label}</div>
           <div class="toggle-desc">${layer.description}</div>
         </div>
       </div>
@@ -134,32 +113,28 @@ export function renderDataSources() {
     <div class="data-source">
       <div class="ds-dot ds-dot-${ds.status}"></div>
       <span class="ds-label">${ds.label}</span>
-      ${ds.count !== undefined ? `<span class="ds-count">${ds.count}</span>` : ''}
+      ${ds.count !== undefined ? `<span class="ds-count">${ds.count.toLocaleString()}</span>` : ''}
     </div>
   `).join('');
 }
 
 export function updateStats() {
-  const events = store.getVisibleEvents();
   const allEvents = store.getState().events;
+  const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
 
-  // TTC delays
   const ttcEl = document.getElementById('stat-ttc');
   if (ttcEl) {
-    const ttcCount = allEvents.filter(e => e.category === 'ttc').length;
-    ttcEl.textContent = String(ttcCount);
-    ttcEl.className = `stat-value ${ttcCount > 5 ? 'stat-critical' : ttcCount > 2 ? 'stat-warn' : 'stat-ok'}`;
+    const count = allEvents.filter(e => e.category === 'ttc').length;
+    ttcEl.textContent = count > 0 ? String(count) : '—';
+    ttcEl.className = `stat-value ${count > 5 ? 'stat-critical' : count > 2 ? 'stat-warn' : count > 0 ? 'stat-ok' : ''}`;
   }
 
-  // 311 calls (last 24h)
   const el311 = document.getElementById('stat-311');
   if (el311) {
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    const count311 = allEvents.filter(e => e.category === '311' && e.timestamp >= cutoff).length;
-    el311.textContent = count311 > 999 ? `${(count311 / 1000).toFixed(1)}k` : String(count311);
+    const count = allEvents.filter(e => e.category === '311' && e.timestamp >= cutoff24h).length;
+    el311.textContent = count > 0 ? (count > 999 ? `${(count / 1000).toFixed(1)}k` : String(count)) : '—';
   }
 
-  // Avg AQHI
   const aqhiEl = document.getElementById('stat-aqhi');
   if (aqhiEl) {
     const aqEvents = allEvents.filter(e => e.category === 'airquality');
@@ -167,87 +142,21 @@ export function updateStats() {
       const avg = aqEvents.reduce((sum, e) => sum + (Number(e.metadata?.aqhi) || 3), 0) / aqEvents.length;
       aqhiEl.textContent = avg.toFixed(1);
       aqhiEl.className = `stat-value ${avg >= 7 ? 'stat-critical' : avg >= 4 ? 'stat-warn' : 'stat-ok'}`;
+    } else {
+      aqhiEl.textContent = '—';
     }
   }
 
-  // Shelters full
   const shelterEl = document.getElementById('stat-shelter');
   if (shelterEl) {
     const shelterEvents = allEvents.filter(e => e.category === 'shelter');
-    const full = shelterEvents.filter(e => e.severity === 'critical').length;
-    const total = shelterEvents.length;
-    if (total > 0) {
-      shelterEl.textContent = `${full}/${total}`;
-      shelterEl.className = `stat-value ${full / total > 0.5 ? 'stat-critical' : 'stat-warn'}`;
+    if (shelterEvents.length > 0) {
+      const full = shelterEvents.filter(e => e.severity === 'critical').length;
+      shelterEl.textContent = `${full}/${shelterEvents.length}`;
+      shelterEl.className = `stat-value ${full / shelterEvents.length > 0.5 ? 'stat-critical' : 'stat-warn'}`;
+    } else {
+      shelterEl.textContent = '—';
     }
-  }
-
-  // Patio Index — night noise complaints in entertainment districts
-  updatePatioIndex();
-
-  void events; // suppress unused warning
-}
-
-function updatePatioIndex() {
-  const now = new Date();
-  const hour = now.getHours();
-  const day = now.getDay(); // 0=Sun, 6=Sat
-  const isWeekendNight = (day === 5 || day === 6) && (hour >= 21 || hour < 3);
-
-  const section = document.getElementById('patio-section');
-  const badge = document.getElementById('patio-badge');
-  const desc = document.getElementById('patio-desc');
-  if (!section || !badge || !desc) return;
-
-  const noiseComplaints = store.getState().events.filter(e =>
-    e.category === '311' &&
-    e.title.toLowerCase().includes('noise') &&
-    e.timestamp >= Date.now() - 3 * 60 * 60 * 1000
-  );
-
-  // Entertainment districts
-  const kensington = noiseComplaints.filter(e =>
-    e.lat > 43.648 && e.lat < 43.658 && e.lng > -79.407 && e.lng < -79.397
-  ).length;
-  const entertainment = noiseComplaints.filter(e =>
-    e.lat > 43.643 && e.lat < 43.652 && e.lng > -79.395 && e.lng < -79.378
-  ).length;
-  const leslieville = noiseComplaints.filter(e =>
-    e.lat > 43.660 && e.lat < 43.672 && e.lng > -79.335 && e.lng < -79.315
-  ).length;
-
-  const hotspot = Math.max(kensington, entertainment, leslieville);
-  const hotspotName = kensington >= entertainment && kensington >= leslieville
-    ? 'Kensington Market'
-    : entertainment >= leslieville
-    ? 'Entertainment District'
-    : 'Leslieville';
-
-  section.style.display = 'block';
-
-  if (!isWeekendNight) {
-    badge.textContent = '—';
-    badge.className = 'patio-badge';
-    desc.textContent = 'Patio season peaks Friday & Saturday nights after 9pm.';
-    return;
-  }
-
-  if (hotspot === 0) {
-    badge.textContent = 'QUIET';
-    badge.className = 'patio-badge patio-quiet';
-    desc.textContent = 'No noise clusters detected yet tonight.';
-  } else if (hotspot < 3) {
-    badge.textContent = 'WARMING UP';
-    badge.className = 'patio-badge patio-warm';
-    desc.textContent = `${hotspotName} showing early activity tonight.`;
-  } else if (hotspot < 7) {
-    badge.textContent = 'PEAKING';
-    badge.className = 'patio-badge patio-peak';
-    desc.textContent = `Patio season is peaking in ${hotspotName} right now. 🍻`;
-  } else {
-    badge.textContent = 'HOT';
-    badge.className = 'patio-badge patio-hot';
-    desc.textContent = `${hotspotName} is absolutely popping tonight.`;
   }
 }
 

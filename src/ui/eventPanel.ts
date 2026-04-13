@@ -6,6 +6,7 @@
 import { store } from '../store';
 import type { PulseEvent } from '../adapters/types';
 import { flyTo } from '../map';
+import { findNeighbourhood } from '../adapters/neighbourhoods';
 
 const SEVERITY_LABELS: Record<string, string> = {
   low: 'Low',
@@ -176,41 +177,43 @@ export function computeNeighbourhoodPulse(lat: number, lng: number): void {
   }
 
   const overallColor = overall >= 70 ? '#4ade80' : overall >= 40 ? '#facc15' : '#f87171';
+  const neighbourhoodName = findNeighbourhood(lat, lng);
 
   card.innerHTML = `
     <div class="nc-header">
-      <div>
-        <div class="nc-title">Neighbourhood Pulse</div>
-        <div class="nc-coords">${lat.toFixed(3)}°N, ${Math.abs(lng).toFixed(3)}°W</div>
+      <div class="nc-title-block">
+        <div class="nc-title">${neighbourhoodName ?? 'Neighbourhood Pulse'}</div>
+        ${neighbourhoodName ? '<div class="nc-subtitle">Neighbourhood Pulse</div>' : ''}
+        <div class="nc-coords">${lat.toFixed(4)}°N, ${Math.abs(lng).toFixed(4)}°W</div>
       </div>
       <div class="nc-overall" style="color:${overallColor}">${overall}</div>
-      <button class="nc-close" id="nc-close">✕</button>
+      <button class="nc-close" id="nc-close">&#215;</button>
     </div>
     <div class="nc-overall-label" style="color:${overallColor}">${scoreLabel(overall)} liveability right now</div>
 
     <div class="nc-scores">
       <div class="nc-row">
-        <span class="nc-metric">🚇 Transit</span>
+        <span class="nc-metric">Transit</span>
         <span class="nc-val" style="color:${transitScore >= 70 ? '#4ade80' : transitScore >= 40 ? '#facc15' : '#f87171'}">${transitScore}</span>
         ${scoreBar(transitScore)}
       </div>
       <div class="nc-row">
-        <span class="nc-metric">🔇 Noise</span>
+        <span class="nc-metric">Noise</span>
         <span class="nc-val" style="color:${noiseScore >= 70 ? '#4ade80' : noiseScore >= 40 ? '#facc15' : '#f87171'}">${noiseScore}</span>
         ${scoreBar(noiseScore)}
       </div>
       <div class="nc-row">
-        <span class="nc-metric">💨 Air Quality</span>
+        <span class="nc-metric">Air Quality</span>
         <span class="nc-val" style="color:${aqScore >= 70 ? '#4ade80' : aqScore >= 40 ? '#facc15' : '#f87171'}">${Math.round(aqScore)}</span>
         ${scoreBar(aqScore)}
       </div>
       <div class="nc-row">
-        <span class="nc-metric">🍽️ DineSafe</span>
+        <span class="nc-metric">DineSafe</span>
         <span class="nc-val" style="color:${restScore >= 70 ? '#4ade80' : restScore >= 40 ? '#facc15' : '#f87171'}">${Math.round(restScore)}</span>
         ${scoreBar(restScore)}
       </div>
       <div class="nc-row">
-        <span class="nc-metric">🏗️ Disruption</span>
+        <span class="nc-metric">Disruption</span>
         <span class="nc-val" style="color:${constructionScore >= 70 ? '#4ade80' : constructionScore >= 40 ? '#facc15' : '#f87171'}">${constructionScore}</span>
         ${scoreBar(constructionScore)}
       </div>

@@ -1,92 +1,87 @@
 /**
- * Traffic Incidents & Road Closures Adapter
- * Source: Toronto Open Data — Road Restrictions / Traffic Cameras
- * https://open.toronto.ca/dataset/road-restrictions/
+ * Road Restrictions (Road Closures & Traffic Incidents)
+ * Source: Toronto Open Data — Road Restrictions Version 3
+ * Resource: Direct JSON download (no datastore API — CORS-accessible direct URL)
+ * URL: https://ckan0.cf.opendata.inter.prod-toronto.ca/dataset/road-restrictions/resource/421c8a17-4ecf-4cae-b084-ccb005ea6cc3/download/
+ * Structure: { "Closure": [ { id, road, name, district, latitude, longitude, workEventType, ... } ] }
  */
 
 import type { PulseEvent, Severity } from './types';
 
-const TORONTO_OPEN_DATA_BASE = 'https://ckan0.cf.opendata.inter.prod-toronto.ca';
+const ROAD_JSON_URL =
+  'https://ckan0.cf.opendata.inter.prod-toronto.ca/dataset/road-restrictions/resource/421c8a17-4ecf-4cae-b084-ccb005ea6cc3/download/Road%20Restrictions%20%28Version%203%29%20-%20JSON.json';
 
-const ROAD_COORDS: [number, number][] = [
-  [43.6450, -79.3900], [43.6500, -79.3700], [43.6600, -79.3800],
-  [43.6700, -79.4000], [43.6550, -79.4100], [43.6450, -79.4500],
-  [43.6600, -79.4600], [43.6800, -79.3600], [43.7000, -79.3900],
-  [43.7100, -79.4200], [43.6300, -79.5000], [43.6400, -79.3700],
-  [43.6900, -79.5100], [43.7200, -79.3200], [43.6750, -79.3400],
-];
-
-function trafficSeverity(type: string): Severity {
-  const t = type?.toLowerCase() ?? '';
-  if (t.includes('emergency') || t.includes('major')) return 'critical';
-  if (t.includes('closure') || t.includes('closed')) return 'high';
-  if (t.includes('partial') || t.includes('restriction')) return 'medium';
+function trafficSeverity(workEventType: string, roadClass: string): Severity {
+  const type = workEventType?.toLowerCase() ?? '';
+  const road = roadClass?.toLowerCase() ?? '';
+  if (type.includes('emergency')) return 'critical';
+  if (road.includes('expressway') || road.includes('major arterial')) return 'high';
+  if (type.includes('closure') || type.includes('construction')) return 'medium';
   return 'low';
 }
 
-const INCIDENT_TYPES = [
-  'Road Closure - Construction',
-  'Road Closure - Emergency',
-  'Lane Restriction - Water Main Repair',
-  'Partial Road Closure - Event',
-  'Traffic Signal Outage',
-  'Road Closure - Utility Work',
-  'Sidewalk Closure',
-  'Lane Restriction - TTC Track Work',
-  'Road Closure - Film Shoot',
-  'Emergency Road Work',
-];
-
-function generateFallbackTraffic(): PulseEvent[] {
-  const count = 15 + Math.floor(Math.random() * 15);
-  const now = Date.now();
-
-  return Array.from({ length: count }, (_, i) => {
-    const coord = ROAD_COORDS[i % ROAD_COORDS.length];
-    const type = INCIDENT_TYPES[Math.floor(Math.random() * INCIDENT_TYPES.length)];
-    return {
-      id: `traffic-fallback-${i}-${now}`,
-      lat: coord[0] + (Math.random() - 0.5) * 0.015,
-      lng: coord[1] + (Math.random() - 0.5) * 0.015,
-      category: 'traffic' as const,
-      severity: trafficSeverity(type),
-      timestamp: now - Math.random() * 8 * 60 * 60 * 1000,
-      title: type,
-      description: 'City of Toronto road restriction.',
-      metadata: { type },
-    };
-  });
+interface RoadClosureRaw {
+  id: string;
+  road: string;
+  name: string;
+  district: string;
+  latitude: string;
+  longitude: string;
+  roadClass: string;
+  workEventType: string;
+  startTime: string;
+  endTime: string | null;
+  workPeriod: string;
+  planned: number;
 }
 
 export async function fetchTrafficIncidents(): Promise<PulseEvent[]> {
-  try {
-    // Toronto Road Restrictions dataset
-    const url = `${TORONTO_OPEN_DATA_BASE}/api/3/action/datastore_search?resource_id=c7d1c351-1f0c-4e9f-a3b2-5f2b6c4d8e9a&limit=200`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error('Traffic fetch failed');
-    const data = await res.json();
-    const records: Record<string, string>[] = data?.result?.records ?? [];
-    if (records.length === 0) return generateFallbackTraffic();
+  const res = await fetch(ROAD_JSON_URL, { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) return [];
 
-    const now = Date.now();
-    return records.map((row, i): PulseEvent => {
-      const lat = parseFloat(row['LATITUDE'] ?? row['lat'] ?? '0');
-      const lng = parseFloat(row['LONGITUDE'] ?? row['lng'] ?? '0');
-      const coord = ROAD_COORDS[i % ROAD_COORDS.length];
-      const type = row['DESCRIPTION'] ?? row['WORKTYPE'] ?? 'Road Restriction';
+  // This feed contains invalid JSON escape sequences (bare backslashes in string values).
+  // Fetch as text and sanitize before parsing.
+  const raw = await res.text();
+  const sanitized = raw.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(sanitized);
+  } catch {
+    return [];
+  }
+  const closures: RoadClosureRaw[] = (data?.['Closure'] as RoadClosureRaw[] | undefined) ?? [];
+  if (closures.length === 0) return [];
+
+  const now = Date.now();
+
+  return closures
+    .filter(c => {
+      const lat = parseFloat(c.latitude ?? '0');
+      const lng = parseFloat(c.longitude ?? '0');
+      return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+    })
+    .map((c): PulseEvent => {
+      const lat = parseFloat(c.latitude);
+      const lng = parseFloat(c.longitude);
+      const start = c.startTime ? parseInt(c.startTime) : now;
+
       return {
-        id: `traffic-${row['_id'] ?? i}-${now}`,
-        lat: isNaN(lat) || lat === 0 ? coord[0] + (Math.random() - 0.5) * 0.01 : lat,
-        lng: isNaN(lng) || lng === 0 ? coord[1] + (Math.random() - 0.5) * 0.01 : lng,
-        category: 'traffic' as const,
-        severity: trafficSeverity(type),
-        timestamp: now - Math.random() * 4 * 60 * 60 * 1000,
-        title: type,
-        description: row['DISTRICT'] ?? undefined,
-        metadata: { type },
+        id: `traffic-${c.id}`,
+        lat,
+        lng,
+        category: 'traffic',
+        severity: trafficSeverity(c.workEventType, c.roadClass),
+        timestamp: start,
+        title: c.name || c.road || 'Road Restriction',
+        description: [c.district, c.workPeriod].filter(Boolean).join(' · ') || undefined,
+        metadata: {
+          road: c.road,
+          district: c.district,
+          roadClass: c.roadClass,
+          workEventType: c.workEventType,
+          planned: c.planned ? 'Yes' : 'No',
+          endTime: c.endTime ?? 'Ongoing',
+        },
       };
     });
-  } catch {
-    return generateFallbackTraffic();
-  }
 }
