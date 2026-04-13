@@ -10,6 +10,13 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/toronto-api/, ''),
       },
+      // Proxies /ttc-gtfs/* → https://gtfs.torontotransit.com/*
+      // TTC GTFS-Realtime protobuf feed (no CORS headers on their end).
+      '/ttc-gtfs': {
+        target: 'https://gtfs.torontotransit.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/ttc-gtfs/, ''),
+      },
     },
   },
 });
