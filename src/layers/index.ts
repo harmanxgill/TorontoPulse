@@ -3,11 +3,12 @@
  * Each category gets its own visual treatment.
  */
 
-import { ScatterplotLayer } from '@deck.gl/layers';
+import { ScatterplotLayer, PathLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import type { Layer } from '@deck.gl/core';
 import { store } from '../store';
 import type { PulseEvent } from '../adapters/types';
+import { SUBWAY_LINES, lineStatusColor } from '../adapters/ttcShapes';
 
 const SEVERITY_ALPHA: Record<string, number> = {
   low: 160,
@@ -99,6 +100,34 @@ export function buildLayers(): Layer[] {
     const group = byCategory.get(event.category) ?? [];
     group.push(event);
     byCategory.set(event.category, group);
+  }
+
+  // --- Subway line status overlay (PathLayer, rendered first = under everything) ---
+  // Visible whenever the TTC layer is toggled on.
+  // Color reflects the worst active GTFS-RT alert for that route:
+  //   green = clear, yellow = reduced/detour, red = no service/major delays.
+  const ttcLayerEnabled = state.layers.find(l => l.id === 'ttc')?.enabled ?? true;
+  if (ttcLayerEnabled) {
+    const ttcEvents = state.events.filter(e => e.category === 'ttc');
+    const subwayLineData = SUBWAY_LINES.map(line => ({
+      ...line,
+      color: lineStatusColor(line.routeId, ttcEvents),
+    }));
+    layers.push(
+      new PathLayer({
+        id: 'subway-lines',
+        data: subwayLineData,
+        getPath: d => d.path,
+        getColor: d => d.color,
+        getWidth: 40, // metres — scales with zoom
+        widthMinPixels: 2,
+        widthMaxPixels: 7,
+        capRounded: true,
+        jointRounded: true,
+        pickable: false,
+        opacity: 0.85,
+      })
+    );
   }
 
   // --- 311 Complaints: Heatmap + scatter ---
