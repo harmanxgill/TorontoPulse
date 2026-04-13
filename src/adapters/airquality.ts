@@ -11,7 +11,8 @@
 
 import type { PulseEvent, Severity } from './types';
 
-const AQHI_URL = 'https://api.weather.gc.ca/collections/aqhi-observations-realtime/items?lang=en&limit=200&f=json&latest=true';
+// Always use the local proxy path — Vite handles it in dev, vercel.json in prod.
+const AQHI_URL = '/eccc-api/collections/aqhi-observations-realtime/items?lang=en&limit=200&f=json&latest=true';
 
 const TORONTO_STATION_IDS = new Set(['FCWYG', 'FDQBX', 'FDQBU', 'FCKTB', 'FEUZB']);
 

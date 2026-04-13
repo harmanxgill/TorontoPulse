@@ -17,6 +17,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/ttc-gtfs/, ''),
       },
+      '/eccc-api': {
+        target: 'https://api.weather.gc.ca',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/eccc-api/, ''),
+      },
     },
   },
 });

@@ -100,6 +100,16 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 }
 
 .logo-accent { color: #ef4444; }
+
+.github-link {
+  margin-left: auto;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+.github-link:hover { color: var(--text); }
 .tagline { font-size: 11px; color: var(--text-muted); margin-top: 3px; letter-spacing: 0.5px; }
 
 .sidebar-section {

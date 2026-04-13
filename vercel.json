@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/toronto-api/:path*",
+      "destination": "https://ckan0.cf.opendata.inter.prod-toronto.ca/:path*"
+    },
+    {
+      "source": "/ttc-gtfs/:path*",
+      "destination": "https://gtfs.torontotransit.com/:path*"
+    },
+    {
+      "source": "/eccc-api/:path*",
+      "destination": "https://api.weather.gc.ca/:path*"
+    }
+  ]
+}

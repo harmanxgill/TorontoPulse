@@ -14,9 +14,8 @@
 
 import { transit_realtime } from 'gtfs-realtime-bindings';
 
-const VEHICLE_POSITION_URL = `${
-  import.meta.env.DEV ? '/ttc-gtfs' : 'https://gtfs.torontotransit.com'
-}/GTFSRealtime.ashx?Type=VehiclePosition`;
+// Always use the local proxy path — Vite handles it in dev, vercel.json in prod.
+const VEHICLE_POSITION_URL = '/ttc-gtfs/GTFSRealtime.ashx?Type=VehiclePosition';
 
 const SUBWAY_ROUTE_IDS = new Set(['1', '2', '4']);
 

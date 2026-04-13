@@ -10,11 +10,8 @@
 import { transit_realtime } from 'gtfs-realtime-bindings';
 import type { PulseEvent, Severity } from './types';
 
-// In dev: proxied via Vite (/ttc-gtfs → https://gtfs.torontotransit.com)
-// In prod: needs a serverless proxy or CORS-enabled CDN mirror
-const GTFS_RT_BASE = import.meta.env.DEV
-  ? '/ttc-gtfs'
-  : 'https://gtfs.torontotransit.com';
+// Always use the local proxy path — Vite handles it in dev, vercel.json in prod.
+const GTFS_RT_BASE = '/ttc-gtfs';
 
 const SERVICE_ALERT_URL = `${GTFS_RT_BASE}/GTFSRealtime.ashx?Type=ServiceAlert`;
 
