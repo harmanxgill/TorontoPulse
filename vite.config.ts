@@ -22,6 +22,13 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/eccc-api/, ''),
       },
+      // Proxies /open311/* → https://secure.toronto.ca/*
+      // Toronto Open311 GeoReport API — bypasses CORS.
+      '/open311': {
+        target: 'https://secure.toronto.ca',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/open311/, ''),
+      },
     },
   },
 });

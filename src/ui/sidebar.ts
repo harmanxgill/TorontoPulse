@@ -39,7 +39,7 @@ export function buildSidebar(): HTMLElement {
           </div>
           <div class="stat-card">
             <div class="stat-value" id="stat-311">—</div>
-            <div class="stat-label">311 calls today</div>
+            <div class="stat-label">311 past 15 days</div>
           </div>
           <div class="stat-card">
             <div class="stat-value" id="stat-aqhi">—</div>
@@ -131,7 +131,6 @@ export function renderDataSources() {
 
 export function updateStats() {
   const allEvents = store.getState().events;
-  const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
 
   const ttcEl = document.getElementById('stat-ttc');
   if (ttcEl) {
@@ -142,7 +141,8 @@ export function updateStats() {
 
   const el311 = document.getElementById('stat-311');
   if (el311) {
-    const count = allEvents.filter(e => e.category === '311' && e.timestamp >= cutoff24h).length;
+    const cutoff7d = Date.now() - 15 * 24 * 60 * 60 * 1000;
+    const count = allEvents.filter(e => e.category === '311' && e.timestamp >= cutoff7d).length;
     el311.textContent = count > 0 ? (count > 999 ? `${(count / 1000).toFixed(1)}k` : String(count)) : '—';
   }
 

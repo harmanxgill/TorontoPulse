@@ -54,6 +54,14 @@ export const LAYER_CONFIGS: LayerConfig[] = [
     enabled: false,
     description: 'Neighbourhood crime rates by category (Toronto Police, 2025)',
   },
+  {
+    id: '311',
+    label: '311 Complaints',
+    icon: '',
+    color: [255, 160, 30],
+    enabled: false,
+    description: 'Citizen service requests: noise, graffiti, property standards, waste, roads',
+  },
 ];
 
 export interface AppState {
@@ -150,9 +158,12 @@ class Store {
       this.state.layers.filter(l => l.enabled).map(l => l.id)
     );
     const cutoff = Date.now() - this.state.timeRange * 60 * 60 * 1000;
-    return this.state.events.filter(
-      e => enabledLayers.has(e.category) && e.timestamp >= cutoff
-    );
+    const complaintCutoff = Date.now() - 15 * 24 * 60 * 60 * 1000; // 311: last 15 days
+    return this.state.events.filter(e => {
+      if (!enabledLayers.has(e.category)) return false;
+      if (e.category === '311') return e.timestamp >= complaintCutoff;
+      return e.timestamp >= cutoff;
+    });
   }
 
   getLayerConfig(id: EventCategory): LayerConfig | undefined {

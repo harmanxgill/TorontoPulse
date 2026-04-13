@@ -25,6 +25,7 @@ import {
 } from './ui/eventPanel';
 import {
   fetchTTCDelays,
+  fetch311Complaints,
   fetchRestaurantInspections,
   fetchAirQuality,
   fetchTrafficIncidents,
@@ -198,6 +199,7 @@ const LOADERS: Loader[] = [
   { id: 'restaurant', label: 'DineSafe',              fetch: fetchRestaurantInspections,  category: 'restaurant'                      },
   { id: 'shelter',    label: 'Shelter Capacity',      fetch: fetchShelterCapacity,        category: 'shelter',    refreshInterval: 60 },
   { id: 'crime',      label: 'Crime Rates (TPS)',     fetch: fetchCrimeIncidents,         category: 'crime'                           },
+  { id: '311',        label: '311 Complaints',        fetch: fetch311Complaints,          category: '311'                             },
 ];
 
 async function loadLoader(loader: Loader): Promise<void> {

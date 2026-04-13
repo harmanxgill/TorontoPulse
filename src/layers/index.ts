@@ -171,7 +171,7 @@ export function buildLayers(): Layer[] {
     }
   }
 
-  // --- 311 Complaints: Heatmap + scatter ---
+  // --- 311 Complaints: Heatmap only (FSA-level accuracy, scatter looks clustered) ---
   const complaints = byCategory.get('311') ?? [];
   if (complaints.length > 0) {
     layers.push(
@@ -180,19 +180,19 @@ export function buildLayers(): Layer[] {
         data: complaints,
         getPosition: (d: PulseEvent) => [d.lng, d.lat],
         getWeight: (d: PulseEvent) => d.severity === 'critical' ? 4 : d.severity === 'high' ? 3 : d.severity === 'medium' ? 2 : 1,
-        radiusPixels: 40,
-        intensity: 1.2,
-        threshold: 0.05,
+        radiusPixels: 60,
+        intensity: 1.4,
+        threshold: 0.03,
         colorRange: [
-          [50, 50, 200, 0],
-          [100, 100, 255, 100],
-          [255, 200, 0, 180],
-          [255, 140, 0, 210],
-          [255, 80, 0, 230],
+          [255, 180, 50, 0],
+          [255, 160, 30, 80],
+          [255, 120, 20, 140],
+          [255, 80, 10, 190],
+          [255, 50, 0, 220],
           [255, 30, 30, 255],
         ],
         pickable: false,
-        opacity: 0.6,
+        opacity: 0.65,
       })
     );
   }
@@ -287,22 +287,6 @@ export function buildLayers(): Layer[] {
     })
   );
 
-  // --- 311 complaints as scatter on top of heatmap for interaction ---
-  layers.push(
-    new ScatterplotLayer({
-      id: '311-scatter',
-      data: complaints,
-      getPosition: (d: PulseEvent) => [d.lng, d.lat],
-      getRadius: (d: PulseEvent) => getRadius(d) * 0.6,
-      getFillColor: (d: PulseEvent) => getColor(d),
-      radiusMinPixels: 3,
-      radiusMaxPixels: 12,
-      pickable: true,
-      autoHighlight: true,
-      highlightColor: [255, 255, 255, 60],
-      opacity: 0.7,
-    })
-  );
 
   // --- Traffic incidents ---
   const trafficEvents = byCategory.get('traffic') ?? [];
