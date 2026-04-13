@@ -8,8 +8,9 @@
  */
 
 import type { PulseEvent, Severity } from './types';
+import { TORONTO_BASE } from './config';
 
-const BASE = 'https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/datastore_search';
+const BASE = `${TORONTO_BASE}/api/3/action/datastore_search`;
 const RESOURCE_ID = '29d83dfa-f8b6-4aa2-8e57-12046c1d83e8';
 
 function outcomeSeverity(outcome: string): Severity {

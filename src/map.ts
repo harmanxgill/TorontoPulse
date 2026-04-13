@@ -1,19 +1,20 @@
 /**
  * Map engine — MapLibre GL base map + deck.gl overlay
+ *
+ * deck.gl canvas has pointer-events:none so MapLibre handles all mouse
+ * interactions. We manually call deck.pickObject() / deck.pickMultipleObjects()
+ * from MapLibre event handlers to get hover and click picking.
  */
 
-import maplibregl from 'maplibre-gl';
+import maplibregl, { type MapMouseEvent } from 'maplibre-gl';
 import { Deck } from '@deck.gl/core';
 import type { Layer } from '@deck.gl/core';
 import { store } from './store';
 import { buildLayers } from './layers';
 
-// Toronto city centre
 const TORONTO_CENTER: [number, number] = [-79.3832, 43.6532];
 const DEFAULT_ZOOM = 12;
 
-// Dark map style from MapTiler (free, no key needed for basic tiles)
-// We use a self-contained style with Carto dark tiles
 const MAP_STYLE = {
   version: 8,
   sources: {
@@ -43,7 +44,11 @@ const MAP_STYLE = {
 let mapInstance: maplibregl.Map | null = null;
 let deckInstance: Deck | null = null;
 
-export function initMap(container: HTMLElement): { map: maplibregl.Map; deck: Deck } {
+export function initMap(
+  container: HTMLElement,
+  onEventClick: (event: unknown | null, lngLat?: { lat: number; lng: number }) => void,
+  onEventHover: (event: unknown | null) => void,
+): { map: maplibregl.Map; deck: Deck } {
   const map = new maplibregl.Map({
     container,
     style: MAP_STYLE as maplibregl.StyleSpecification,
@@ -55,12 +60,8 @@ export function initMap(container: HTMLElement): { map: maplibregl.Map; deck: De
   });
 
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
-  map.addControl(
-    new maplibregl.AttributionControl({ compact: true }),
-    'bottom-left'
-  );
+  map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
 
-  // Create deck.gl instance that draws on top of MapLibre
   const deck = new Deck({
     canvas: 'deck-canvas',
     width: '100%',
@@ -72,18 +73,12 @@ export function initMap(container: HTMLElement): { map: maplibregl.Map; deck: De
       pitch: 0,
       bearing: 0,
     },
-    controller: false, // MapLibre handles interactions
+    controller: false,
     layers: [],
-    onHover: ({ object }) => {
-      store.setHoveredEvent(object ?? null);
-      container.style.cursor = object ? 'pointer' : '';
-    },
-    onClick: ({ object }) => {
-      store.setSelectedEvent(object ?? null);
-    },
+    // No onClick/onHover here — we drive picking from MapLibre events below
   });
 
-  // Keep deck.gl in sync with MapLibre camera
+  // Sync deck camera with MapLibre on every frame
   map.on('move', () => {
     const { lng, lat } = map.getCenter();
     deck.setProps({
@@ -97,10 +92,34 @@ export function initMap(container: HTMLElement): { map: maplibregl.Map; deck: De
     });
   });
 
+  // Manual picking: translate MapLibre pixel coords → deck pickObject
+  function deckPick(e: MapMouseEvent) {
+    return deck.pickObject({
+      x: e.point.x,
+      y: e.point.y,
+      radius: 8,
+    });
+  }
+
+  map.on('mousemove', (e: MapMouseEvent) => {
+    const picked = deckPick(e);
+    const obj = picked?.object ?? null;
+    onEventHover(obj);
+    map.getCanvas().style.cursor = obj ? 'pointer' : '';
+  });
+
+  map.on('click', (e: MapMouseEvent) => {
+    const picked = deckPick(e);
+    if (picked?.object) {
+      onEventClick(picked.object);
+    } else {
+      onEventClick(null, { lat: e.lngLat.lat, lng: e.lngLat.lng });
+    }
+  });
+
   mapInstance = map;
   deckInstance = deck;
 
-  // Re-render deck layers whenever store state changes
   store.subscribe(() => {
     if (!deckInstance) return;
     deckInstance.setProps({ layers: buildLayers() });

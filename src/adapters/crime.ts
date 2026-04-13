@@ -10,9 +10,9 @@
  */
 
 import type { PulseEvent, Severity } from './types';
+import { TORONTO_BASE } from './config';
 
-const CRIME_RATES_GEOJSON =
-  'https://ckan0.cf.opendata.inter.prod-toronto.ca/dataset/neighbourhood-crime-rates/resource/47b99279-3e53-4080-8e93-d89fcfe14c77/download/neighbourhood-crime-rates-4326.geojson';
+const CRIME_RATES_GEOJSON = `${TORONTO_BASE}/dataset/neighbourhood-crime-rates/resource/47b99279-3e53-4080-8e93-d89fcfe14c77/download/neighbourhood-crime-rates-4326.geojson`;
 
 type GeoCoord = [number, number];
 type Ring = GeoCoord[];

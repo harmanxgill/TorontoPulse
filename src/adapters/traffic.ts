@@ -7,9 +7,9 @@
  */
 
 import type { PulseEvent, Severity } from './types';
+import { TORONTO_BASE } from './config';
 
-const ROAD_JSON_URL =
-  'https://ckan0.cf.opendata.inter.prod-toronto.ca/dataset/road-restrictions/resource/421c8a17-4ecf-4cae-b084-ccb005ea6cc3/download/Road%20Restrictions%20%28Version%203%29%20-%20JSON.json';
+const ROAD_JSON_URL = `${TORONTO_BASE}/dataset/road-restrictions/resource/421c8a17-4ecf-4cae-b084-ccb005ea6cc3/download/Road%20Restrictions%20%28Version%203%29%20-%20JSON.json`;
 
 function trafficSeverity(workEventType: string, roadClass: string): Severity {
   const type = workEventType?.toLowerCase() ?? '';

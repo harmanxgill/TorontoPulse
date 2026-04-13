@@ -1,14 +1,17 @@
 /**
  * TTC Subway Delay Data
  * Source: Toronto Open Data
- * Resource: 6088e14f-e46e-4f5c-9daa-dea1359ad396 (TTC Subway Delay Data since 2025)
+ * Resource: 6088e14f-e46e-4f5c-9daa-dea1359ad396 (TTC Subway Delay Data)
+ * Codes:    9e9efbb6-3a2f-4934-ac94-9150ecaeb548 (TTC Subway Delay Codes)
  * Fields: Date, Time, Day, Station, Code, Min Delay, Min Gap, Bound, Line, Vehicle
  */
 
 import type { PulseEvent, Severity } from './types';
+import { TORONTO_BASE } from './config';
 
-const BASE = 'https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/datastore_search';
-const RESOURCE_ID = '6088e14f-e46e-4f5c-9daa-dea1359ad396';
+const BASE = `${TORONTO_BASE}/api/3/action/datastore_search`;
+const RESOURCE_ID  = '6088e14f-e46e-4f5c-9daa-dea1359ad396';
+const CODES_RESOURCE = '9e9efbb6-3a2f-4934-ac94-9150ecaeb548';
 
 // Verified station coordinates (WGS84)
 const STATION_COORDS: Record<string, [number, number]> = {
@@ -75,12 +78,60 @@ const STATION_COORDS: Record<string, [number, number]> = {
   'DAVISVILLE':     [43.6981, -79.3974],
 };
 
+const LINE_NAMES: Record<string, string> = {
+  'YU':  'Line 1 (Yonge-University)',
+  'BD':  'Line 2 (Bloor-Danforth)',
+  'SHP': 'Line 4 (Sheppard)',
+  'SRT': 'Line 3 (Scarborough RT)',
+  'YUS': 'Line 1 (Yonge-University)',
+  'YU/BD': 'Lines 1 & 2',
+  'BD/YU': 'Lines 1 & 2',
+};
+
+const BOUND_NAMES: Record<string, string> = {
+  'N': 'Northbound',
+  'S': 'Southbound',
+  'E': 'Eastbound',
+  'W': 'Westbound',
+  'B': 'Both directions',
+};
+
+// Cached delay code descriptions fetched from Toronto Open Data
+let codeDescriptions: Map<string, string> | null = null;
+let codesPromise: Promise<Map<string, string>> | null = null;
+
+async function loadCodeDescriptions(): Promise<Map<string, string>> {
+  if (codeDescriptions) return codeDescriptions;
+  if (codesPromise) return codesPromise;
+
+  codesPromise = (async () => {
+    const map = new Map<string, string>();
+    try {
+      const url = `${BASE}?resource_id=${CODES_RESOURCE}&limit=500`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (res.ok) {
+        const data = await res.json();
+        const records: Record<string, string>[] = data?.result?.records ?? [];
+        for (const r of records) {
+          const code = String(r['CODE'] ?? r['Code'] ?? '').trim();
+          const desc = String(r['DESCRIPTION'] ?? r['Description'] ?? '').trim();
+          if (code && desc) map.set(code, desc);
+        }
+      }
+    } catch {
+      // Codes unavailable — will fall back to raw code strings
+    }
+    codeDescriptions = map;
+    return map;
+  })();
+
+  return codesPromise;
+}
+
 function resolveCoords(stationName: string): [number, number] | null {
   if (!stationName) return null;
   const upper = stationName.toUpperCase().trim();
-  // Exact match
   if (STATION_COORDS[upper]) return STATION_COORDS[upper];
-  // Prefix match
   for (const [key, coords] of Object.entries(STATION_COORDS)) {
     if (upper.startsWith(key) || key.startsWith(upper)) return coords;
   }
@@ -90,28 +141,63 @@ function resolveCoords(stationName: string): [number, number] | null {
 function delaySeverity(minutes: number): Severity {
   if (minutes >= 20) return 'critical';
   if (minutes >= 10) return 'high';
-  if (minutes >= 5) return 'medium';
+  if (minutes >= 5)  return 'medium';
   return 'low';
 }
 
-export async function fetchTTCDelays(): Promise<PulseEvent[]> {
-  const url = `${BASE}?resource_id=${RESOURCE_ID}&limit=200&sort=Date desc,Time desc`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-  if (!res.ok) return [];
+function toTitleCase(str: string): string {
+  return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
 
-  const data = await res.json();
+export async function fetchTTCDelays(): Promise<PulseEvent[]> {
+  const [delayData, codes] = await Promise.all([
+    fetch(`${BASE}?resource_id=${RESOURCE_ID}&limit=300&sort=Date desc,Time desc`, {
+      signal: AbortSignal.timeout(10000),
+    }),
+    loadCodeDescriptions(),
+  ]);
+
+  if (!delayData.ok) return [];
+
+  const data = await delayData.json();
   const records: Record<string, string>[] = data?.result?.records ?? [];
   if (records.length === 0) return [];
 
   const now = Date.now();
+
   return records
     .filter(r => {
-      const coords = resolveCoords(r['Station'] ?? '');
-      return coords !== null;
+      // Must have a known station
+      if (!resolveCoords(r['Station'] ?? '')) return false;
+      // Skip non-delay records (0 min delay and 0 min gap = informational only)
+      const delay = parseInt(r['Min Delay'] ?? '0') || 0;
+      if (delay === 0) return false;
+      return true;
     })
     .map((row, i): PulseEvent => {
       const coords = resolveCoords(row['Station'])!;
       const delayMin = parseInt(row['Min Delay'] ?? '0') || 0;
+      const gapMin   = parseInt(row['Min Gap']   ?? '0') || 0;
+      const rawCode  = (row['Code'] ?? '').trim();
+      const rawLine  = (row['Line'] ?? '').trim().toUpperCase();
+      const rawBound = (row['Bound'] ?? '').trim().toUpperCase();
+
+      const codeDesc = codes.get(rawCode);
+      const lineName = LINE_NAMES[rawLine] ?? `Line ${rawLine}`;
+      const boundName = BOUND_NAMES[rawBound] ?? rawBound;
+
+      // Title: human-readable description + station
+      const titleDesc = codeDesc
+        ? toTitleCase(codeDesc)
+        : (rawCode || 'Delay');
+      const stationName = toTitleCase(row['Station'] ?? 'Unknown');
+      const title = `${titleDesc} — ${stationName}`;
+
+      // Description: line, direction, delay, gap
+      const parts: string[] = [lineName];
+      if (boundName) parts.push(boundName);
+      parts.push(`${delayMin} min delay`);
+      if (gapMin > 0) parts.push(`${gapMin} min gap`);
 
       return {
         id: `ttc-${row['_id'] ?? i}-${now}`,
@@ -120,15 +206,17 @@ export async function fetchTTCDelays(): Promise<PulseEvent[]> {
         category: 'ttc',
         severity: delaySeverity(delayMin),
         timestamp: now,
-        title: `${row['Code'] ?? 'Delay'} — ${row['Station']}`,
-        description: `${row['Bound'] ?? ''} bound on Line ${row['Line'] ?? '?'}. Delay: ${delayMin} min. Gap: ${row['Min Gap'] ?? '?'} min.`,
+        title,
+        description: parts.join(' · '),
         metadata: {
-          station: row['Station'] ?? '',
-          line: row['Line'] ?? '',
-          bound: row['Bound'] ?? '',
+          station:      toTitleCase(row['Station'] ?? ''),
+          line:         lineName,
+          bound:        boundName || rawBound,
           delayMinutes: delayMin,
-          code: row['Code'] ?? '',
-          vehicle: row['Vehicle'] ?? '',
+          gapMinutes:   gapMin,
+          code:         rawCode,
+          codeDescription: codeDesc ?? rawCode,
+          vehicle:      row['Vehicle'] ?? '',
         },
       };
     });

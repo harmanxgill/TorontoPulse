@@ -7,9 +7,10 @@
  * so every map click resolves to a real neighbourhood name.
  */
 
+import { TORONTO_BASE } from './config';
+
 // WGS84 (EPSG:4326) GeoJSON — matches map coordinates directly
-const NEIGHBOURHOODS_GEOJSON =
-  'https://ckan0.cf.opendata.inter.prod-toronto.ca/dataset/fc443770-ef0a-4025-9c2c-2cb558bfab00/resource/0719053b-28b7-48ea-b863-068823a93aaa/download/neighbourhoods-4326.geojson';
+const NEIGHBOURHOODS_GEOJSON = `${TORONTO_BASE}/dataset/fc443770-ef0a-4025-9c2c-2cb558bfab00/resource/0719053b-28b7-48ea-b863-068823a93aaa/download/neighbourhoods-4326.geojson`;
 
 interface NeighbourhoodFeature {
   type: 'Feature';

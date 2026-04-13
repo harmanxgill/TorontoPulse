@@ -11,8 +11,9 @@
  */
 
 import type { PulseEvent, Severity } from './types';
+import { TORONTO_BASE } from './config';
 
-const BASE = 'https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/datastore_search';
+const BASE = `${TORONTO_BASE}/api/3/action/datastore_search`;
 const RESOURCE_ID = '42714176-4f05-44e6-b157-2b57f29b856a';
 
 // Partial address → [lat, lng] lookup for known shelter locations

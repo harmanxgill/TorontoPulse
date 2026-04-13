@@ -93,11 +93,34 @@ function setLoading(msg: string, pct: number) {
 }
 
 setLoading('Initialising map...', 10);
-const { map } = initMap(mapCanvas);
+
+// --- Event callbacks passed into map so picking is wired before map.on('load') ---
+function handleEventClick(obj: unknown | null, lngLat?: { lat: number; lng: number }) {
+  if (obj) {
+    // Clicked a data point
+    store.setSelectedEvent(obj as import('./adapters/types').PulseEvent);
+  } else if (lngLat) {
+    // Clicked empty map — neighbourhood pulse
+    store.setSelectedEvent(null);
+    computeNeighbourhoodPulse(lngLat.lat, lngLat.lng);
+  }
+}
+
+function handleEventHover(obj: unknown | null) {
+  store.setHoveredEvent(obj as import('./adapters/types').PulseEvent | null);
+  if (obj) {
+    const ev = obj as import('./adapters/types').PulseEvent;
+    tooltip.style.display = 'block';
+    tooltip.textContent = ev.title;
+  } else {
+    tooltip.style.display = 'none';
+  }
+}
+
+const { map } = initMap(mapCanvas, handleEventClick, handleEventHover);
 
 map.on('load', async () => {
   setLoading('Loading neighbourhood boundaries...', 20);
-  // Load boundaries in parallel with data — needed for Pulse Card name lookup
   loadNeighbourhoods().catch(() => {});
 
   setLoading('Map ready — loading data sources...', 30);
@@ -109,28 +132,10 @@ map.on('load', async () => {
     updateStats();
   });
 
-  // Click on empty map → neighbourhood pulse card
-  map.on('click', (e) => {
-    const { lngLat } = e;
-    // Small delay to let deck.gl click handler fire first
-    setTimeout(() => {
-      if (!store.getState().selectedEvent) {
-        computeNeighbourhoodPulse(lngLat.lat, lngLat.lng);
-      }
-    }, 50);
-  });
+  // Wire up empty-map click (obj === null from handleEventClick) to neighbourhood pulse
+  // This is handled directly in handleEventClick above — no additional map.on needed.
 
-  // Hover tooltip follows mouse
-  store.subscribe((state) => {
-    const hovered = state.hoveredEvent;
-    if (hovered) {
-      tooltip.style.display = 'block';
-      tooltip.textContent = hovered.title;
-    } else {
-      tooltip.style.display = 'none';
-    }
-  });
-
+  // Tooltip follows cursor
   mapCanvas.addEventListener('mousemove', (e) => {
     const me = e as MouseEvent;
     tooltip.style.left = `${me.clientX + 14}px`;
